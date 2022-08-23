@@ -51,6 +51,8 @@ class R2AFuzzy(IR2A):
         #  lista p/ armazenar o tempo de cada requisicao,  Ti = [T0, T1, T2...]
         self.time_list = list()
 
+        # armazenar a posicao em qi da qualidade atual.
+        self.current_quality_index = 8
 
         #   Três variáveis ​​linguísticas [short (S), close (C) e longo (L)]
         # são adotados para o tempo de buffer para descrever a distância do tempo de buffer atual de um tempo de buffering alvo
@@ -93,14 +95,15 @@ class R2AFuzzy(IR2A):
    
         # print('xml response parseid_dict', self.parsed_mpd.__dict__)
         self.qi = self.parsed_mpd.get_qi()
+        print(self.qi)
 
         self.send_up(msg)
 
     def handle_segment_size_request(self, msg):
         # time to define the segment quality choose to make the request
 
-
-        msg.add_quality_id(self.qi[3])
+        quality_id = self.fuzzy_controller()
+        msg.add_quality_id(quality_id)
         self.send_down(msg)
 
     def handle_segment_size_response(self, msg):
@@ -109,7 +112,19 @@ class R2AFuzzy(IR2A):
 
 
     def fuzzy_controller(self):
-        pass
+        """Controle Fuzzy -> Retorna a qualidade de bitrate a ser adicionado no request"""
+        output = self.defuzzification()
+        print('self.qi[self.current_quality_index]', self.qi[self.current_quality_index])
+        print('output', output)
+        if (self.current_quality_index + output) >= 19:
+            self.current_quality_index = 19
+            return self.qi[self.current_quality_index]     
+        elif (self.current_quality_index + output) <= 0:
+            self.current_quality_index = 0
+            return self.qi[self.current_quality_index]
+            
+        self.current_quality_index = self.current_quality_index + output
+        return self.qi[self.current_quality_index]
 
 
 
@@ -128,12 +143,12 @@ class R2AFuzzy(IR2A):
         # são adotados para o tempo de buffer para descrever a distância do tempo de buffer atual de um tempo de buffering alvo
         # 
         """
-        return 'S'
+        return 'L'
     def fuzzyfication_difference(self):
         """     #  Para o diferencial do buffer entrada de tempo Δti precisamos descrever o comportamento da taxa
         # entre tempos de buffer subsequentes, as seguintes linguísticas
         # são consideradas as variáveis: falling (F), steady (S) e rising (R)."""
-        return 'F'
+        return 'R'
     
     def fuzzy_rules(self):
         # R1
@@ -166,8 +181,22 @@ class R2AFuzzy(IR2A):
 
     def fuzzy_inference_engine(self):
         pass
-    def _defuzzification(self):
-        pass
+    def defuzzification(self):
+
+        """The output of the FLC f represents an increase/decrease factor of the resolution of the next segment.
+           Thus, the linguistic variables of the output are described as
+        reduce (R), small reduce (SR), no change (NC), small increase
+        (SI), and increase (I). """
+        if self.fuzzy_rules() == "R":
+            return  -2
+        if self.fuzzy_rules() == "SR":
+            return  -1
+        if self.fuzzy_rules() == "NC":
+            return  0
+        if self.fuzzy_rules() == "SI":
+            return  1
+        if self.fuzzy_rules() == "I":
+            return  2
 
 
 
