@@ -45,12 +45,24 @@ class R2AFuzzy(IR2A):
         # tempo de buffer
         self.buffering_time = buffering_time
         self.buffering_time_difference = buffering_time_difference
-
-
-
         # used to store the req and resp time of each segment downloaded
         self.requestTime = 0
-      
+        self.responseTime = time.perf_counter()     
+        #  lista p/ armazenar o tempo de cada requisicao,  Ti = [T0, T1, T2...]
+        self.time_list = list()
+
+
+        #   Três variáveis ​​linguísticas [short (S), close (C) e longo (L)]
+        # são adotados para o tempo de buffer para descrever a distância do tempo de buffer atual de um tempo de buffering alvo
+        # 
+
+        #   Além disso, uma vez que para o diferencial do buffer
+        # entrada de tempo Δti precisamos descrever o comportamento da taxa
+        # entre tempos de buffer subsequentes, as seguintes linguísticas
+        # são consideradas as variáveis: falling (F), steady (S) e rising (R).
+
+        # linguistic variables:
+        
 
 
         # algorithm constants
@@ -75,6 +87,8 @@ class R2AFuzzy(IR2A):
     def handle_xml_response(self, msg):
         # getting qi list
         self.parsed_mpd = parse_mpd(msg.get_payload())
+        self.request_time = time.perf_counter() - self.request_time
+        # print("xml req time", self.request_time)
 
    
         # print('xml response parseid_dict', self.parsed_mpd.__dict__)
@@ -84,12 +98,78 @@ class R2AFuzzy(IR2A):
 
     def handle_segment_size_request(self, msg):
         # time to define the segment quality choose to make the request
-        msg.add_quality_id(self.qi[19])
+
+
+        msg.add_quality_id(self.qi[3])
         self.send_down(msg)
 
     def handle_segment_size_response(self, msg):
-        print("> Handle Sagment Size Response Dictionary ", msg.__dict__)
+        print("> Handle Segment Size Response:", msg.__dict__)
         self.send_up(msg)
+
+
+    def fuzzy_controller(self):
+        pass
+
+
+
+# Controller phases:
+
+
+# # fuzzification:
+#    During this process, each element of input
+# data is converted to degrees of membership by a lookup
+# in one or several membership functions
+
+
+    def fuzzyfication_buffering(self):
+        """
+        #   Três variáveis ​​linguísticas [short (S), close (C) e longo (L)]
+        # são adotados para o tempo de buffer para descrever a distância do tempo de buffer atual de um tempo de buffering alvo
+        # 
+        """
+        return 'S'
+    def fuzzyfication_difference(self):
+        """     #  Para o diferencial do buffer entrada de tempo Δti precisamos descrever o comportamento da taxa
+        # entre tempos de buffer subsequentes, as seguintes linguísticas
+        # são consideradas as variáveis: falling (F), steady (S) e rising (R)."""
+        return 'F'
+    
+    def fuzzy_rules(self):
+        # R1
+        if self.fuzzyfication_buffering() == 'S' and self.fuzzyfication_difference() == 'F':
+            return 'R'
+        
+        if self.fuzzyfication_buffering() == 'C' and self.fuzzyfication_difference() == 'F':
+            return 'SR' 
+        
+        if self.fuzzyfication_buffering() == 'L' and self.fuzzyfication_difference() == 'F':
+            return 'NC'
+        
+        if self.fuzzyfication_buffering() == 'S' and self.fuzzyfication_difference() == 'S':
+            return 'SR'
+        
+        if self.fuzzyfication_buffering() == 'C' and self.fuzzyfication_difference() == 'S':
+            return 'NC'
+        
+        if self.fuzzyfication_buffering() == 'L' and self.fuzzyfication_difference() == 'S':
+            return 'SI'
+        
+        if self.fuzzyfication_buffering() == 'S' and self.fuzzyfication_difference() == 'R':
+            return 'NC'
+        
+        if self.fuzzyfication_buffering() == 'C' and self.fuzzyfication_difference() == 'R':
+            return 'SI'
+        
+        if self.fuzzyfication_buffering() == 'L' and self.fuzzyfication_difference() == 'R':
+            return 'I'
+
+    def fuzzy_inference_engine(self):
+        pass
+    def _defuzzification(self):
+        pass
+
+
 
     def initialize(self):
         pass
