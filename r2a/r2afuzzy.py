@@ -20,15 +20,30 @@ Aggeliki Sgora, Dimitrios D. Vergado, and Periklis Chatzimisios
 
 from player.parser import *
 from r2a.ir2a import IR2A
-import time
+import time, json
+
+
+
+with open('dash_client.json', 'r') as f:
+  data = json.load(f)
+
+# we need these variables from dash_client.json for later.
+buffering_until = data['buffering_until']
+segment_size = data['playbak_step']
+
+
+
+
+
 
 class R2AFuzzy(IR2A):
 
-    def __init__(self, id, buffering_time=0, buffering_time_difference=0):
+    def __init__(self, id):
 
         IR2A.__init__(self, id)
         self.parsed_mpd = ''
         self.qi = []
+
    
     #         In our controller, the input variables are the buffering time
     # denoting the time ti that the last received segment i waits at the
@@ -41,30 +56,14 @@ class R2AFuzzy(IR2A):
     # cliente até que ele comece a rodar e a diferença Δti = ti − ti−1
     # do último tempo de buffer do anterior.
 
-        # variables of algorithm:
-        # tempo de buffer
-        self.buffering_time = buffering_time
-        self.buffering_time_difference = buffering_time_difference
         # used to store the req and resp time of each segment downloaded
         self.requestTime = 0
-        self.responseTime = time.perf_counter()     
+        self.responseTime = 0     
         #  lista p/ armazenar o tempo de cada requisicao,  Ti = [T0, T1, T2...]
         self.time_list = list()
-
         # armazenar a posicao em qi da qualidade atual.
-        self.current_quality_index = 8
+        self.current_quality_index = 0
 
-        #   Três variáveis ​​linguísticas [short (S), close (C) e longo (L)]
-        # são adotados para o tempo de buffer para descrever a distância do tempo de buffer atual de um tempo de buffering alvo
-        # 
-
-        #   Além disso, uma vez que para o diferencial do buffer
-        # entrada de tempo Δti precisamos descrever o comportamento da taxa
-        # entre tempos de buffer subsequentes, as seguintes linguísticas
-        # são consideradas as variáveis: falling (F), steady (S) e rising (R).
-
-        # linguistic variables:
-        
 
 
         # algorithm constants
@@ -81,19 +80,54 @@ class R2AFuzzy(IR2A):
             "P2": 2
         }
 
+
+
+
+# variables of algorithm:
+
+    @property
+    def buffer_size(self):
+        if len(self.whiteboard.get_playback_buffer_size())> 0 :
+            # playback size stored in second element of last segment requested
+            return self.whiteboard.get_playback_buffer_size()[-1][1]
+        return 0
+
+
+# tempo de buffer
+    @property
+    def buffering_time(self):
+        """
+        Representacao da variavel t_i do algoritmo.
+        Veja que ti pode ser expressada como o tempo que o segmento i espera até começar a rodar.
+        Quando um segmento i é baixado, ele irá esperar:  
+        1) a quantidade de elementos que tem no buffer * duracao em segundos de cada segmento  - dessa forma temos o tempo em segundos que o buffer tem em cache
+        2) O tempo de download do segmentyo i = uma vez que se demoramos muito para baixar cada segmento, nosso buffer diminui cada vez mais.,
+        """
+        buffer_size = self.buffer_size
+        download_time = self.response_time
+        # podemos calcular o ti do algoritmo da seguinte forma:
+        # ti = (tamanho do buffer * (tempo de cada segmento em segundos)) + tempo de download do segmento i.
+        if len(self.whiteboard.get_buffer()) < 5:
+            t_i =  (buffer_size * segment_size) +  buffering_until + download_time
+        else:
+            t_i = (buffer_size * segment_size) + download_time
+        return t_i
+
+
+
+
     def handle_xml_request(self, msg):
-        self.request_time = time.perf_counter()
 
         self.send_down(msg)
 
     def handle_xml_response(self, msg):
         # getting qi list
+        print("> Handle XML Size Response:", msg.__dict__)
+
         self.parsed_mpd = parse_mpd(msg.get_payload())
-        self.request_time = time.perf_counter() - self.request_time
-        # print("xml req time", self.request_time)
 
    
-        # print('xml response parseid_dict', self.parsed_mpd.__dict__)
+
         self.qi = self.parsed_mpd.get_qi()
         print(self.qi)
 
@@ -101,21 +135,26 @@ class R2AFuzzy(IR2A):
 
     def handle_segment_size_request(self, msg):
         # time to define the segment quality choose to make the request
-
+        self.request_time = time.perf_counter()
+        
         quality_id = self.fuzzy_controller()
+        print("> Handle Segment Size Request:", msg.__dict__)
         msg.add_quality_id(quality_id)
         self.send_down(msg)
 
     def handle_segment_size_response(self, msg):
         print("> Handle Segment Size Response:", msg.__dict__)
+        self.response_time = time.perf_counter() - self.request_time
+
+        print("\n\n Buffering Time: ", self.buffering_time, "\n")
+
         self.send_up(msg)
+
 
 
     def fuzzy_controller(self):
         """Controle Fuzzy -> Retorna a qualidade de bitrate a ser adicionado no request"""
         output = self.defuzzification()
-        print('self.qi[self.current_quality_index]', self.qi[self.current_quality_index])
-        print('output', output)
         if (self.current_quality_index + output) >= 19:
             self.current_quality_index = 19
             return self.qi[self.current_quality_index]     
@@ -124,7 +163,9 @@ class R2AFuzzy(IR2A):
             return self.qi[self.current_quality_index]
             
         self.current_quality_index = self.current_quality_index + output
-        return self.qi[self.current_quality_index]
+
+        
+        return self.qi[0]
 
 
 
@@ -143,6 +184,10 @@ class R2AFuzzy(IR2A):
         # são adotados para o tempo de buffer para descrever a distância do tempo de buffer atual de um tempo de buffering alvo
         # 
         """
+        #
+        # target_output = self.get_buffering_time - self.target_buffering_time
+        
+        
         return 'L'
     def fuzzyfication_difference(self):
         """     #  Para o diferencial do buffer entrada de tempo Δti precisamos descrever o comportamento da taxa
@@ -187,6 +232,7 @@ class R2AFuzzy(IR2A):
            Thus, the linguistic variables of the output are described as
         reduce (R), small reduce (SR), no change (NC), small increase
         (SI), and increase (I). """
+        return 0
         if self.fuzzy_rules() == "R":
             return  -2
         if self.fuzzy_rules() == "SR":
