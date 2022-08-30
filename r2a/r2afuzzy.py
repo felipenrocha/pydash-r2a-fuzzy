@@ -53,18 +53,17 @@ class R2AFuzzy(IR2A):
 
     #   Em nosso controlador, as variáveis ​​de entrada são o tempo de buffer
     # denotando o tempo ti que o último segmento recebido i espera no
-    # cliente até que ele comece a rodar e a diferença Δti = ti − ti−1
+    # cliente até que ele comece a rodar e a diferença 
     # do último tempo de buffer do anterior.
 
         # used to store the req and resp time of each segment downloaded
-        self.requestTime = 0
-        self.responseTime = 0     
+        self.request_time = time.perf_counter()
+
+        self.response_time = 0     
         #  lista p/ armazenar o tempo de cada requisicao,  Ti = [T0, T1, T2...]
-        self.time_list = list()
+        self.buffering_time_list = list()
         # armazenar a posicao em qi da qualidade atual.
         self.current_quality_index = 10
-
-
 
         # algorithm constants
         #  self.target_buffering_time = tempo de buffer alvo (in seconds)
@@ -111,7 +110,14 @@ class R2AFuzzy(IR2A):
         return t_i
 
     @property
-    
+    def buffering_difference(self):
+        if len(self.buffering_time_list) > 1:
+            # Δti = ti − ti−1
+            return  self.buffering_time - self.buffering_time_list[-1]
+        elif len(self.buffering_time_list) == 1:
+            # t = 1 -> Δt1 = t1 - 0
+            return self.buffering_time
+        return 0
 
     def handle_xml_request(self, msg):
 
@@ -130,7 +136,12 @@ class R2AFuzzy(IR2A):
 
         self.send_up(msg)
 
+
+
+
     def handle_segment_size_request(self, msg):
+        self.buffering_time_list.append(self.buffering_time)
+
         # time to define the segment quality choose to make the request
         self.request_time = time.perf_counter()
         
@@ -144,6 +155,8 @@ class R2AFuzzy(IR2A):
         self.response_time = time.perf_counter() - self.request_time
 
         print("\n\n Buffering Time: ", self.buffering_time, "\n")
+        print("\n\n Buffering Time Difference: ", self.buffering_difference, "\n")
+
 
         self.send_up(msg)
 
