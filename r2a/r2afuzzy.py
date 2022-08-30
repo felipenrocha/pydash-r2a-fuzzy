@@ -67,13 +67,12 @@ class R2AFuzzy(IR2A):
 
         # algorithm constants
         #  self.target_buffering_time = tempo de buffer alvo (in seconds)
-        self.target_buffering_time = 35
+        self.target_buffering_time = 40
         # d = periodo de tempo estimando a taxa de transferência (throughput) da conexão (in seconds)
-        self.d = 60
         # pesos das funções de associacao de saída (defuzzificacao)
         self.factors_membership = {
-            "N2": .25,
-            "N1": .5,
+            "N2": .5,
+            "N1": -2,
             "Z": 1,
             "P1": 1.5,
             "P2": 2
@@ -103,20 +102,22 @@ class R2AFuzzy(IR2A):
         download_time = self.response_time
         # podemos calcular o ti do algoritmo da seguinte forma:
         # ti = (tamanho do buffer * (tempo de cada segmento em segundos)) + tempo de download do segmento i.
-        if len(self.whiteboard.get_buffer()) < 5:
-            t_i =  (buffer_size * segment_size) +  buffering_until + download_time
-        else:
-            t_i = (buffer_size * segment_size) + download_time
+        time_to_watch_on_buffer = buffer_size * segment_size
+        t_i =  time_to_watch_on_buffer + download_time
+   
         return t_i
 
     @property
     def buffering_difference(self):
         if len(self.buffering_time_list) > 1:
             # Δti = ti − ti−1
-            return  self.buffering_time - self.buffering_time_list[-1]
+            # gambiarra
+            # TODO: fix 
+            return   self.buffering_time_list[-1] - self.buffering_time_list[-2]
+
         elif len(self.buffering_time_list) == 1:
             # t = 1 -> Δt1 = t1 - 0
-            return self.buffering_time
+            return  self.buffering_time_list[-1]
         return 0
 
     def handle_xml_request(self, msg):
@@ -125,14 +126,12 @@ class R2AFuzzy(IR2A):
 
     def handle_xml_response(self, msg):
         # getting qi list
-        print("> Handle XML Size Response:", msg.__dict__)
 
         self.parsed_mpd = parse_mpd(msg.get_payload())
 
-   
+        
 
         self.qi = self.parsed_mpd.get_qi()
-        print(self.qi)
 
         self.send_up(msg)
 
@@ -146,16 +145,21 @@ class R2AFuzzy(IR2A):
         self.request_time = time.perf_counter()
         
         quality_id = self.fuzzy_controller()
-        print("> Handle Segment Size Request:", msg.__dict__)
+        
+        print("Buffering_time_list : ", self.buffering_time_list)                
+        print("FUZZYFICATION buffering: ", self.fuzzyfication_buffering())
+        print("FUZZYFICATION DIFFERENCE: ", self.fuzzyfication_difference())
+        print("Fuzzy Rules ", self.fuzzy_rules())
+        print("Fuzzy controller", self.fuzzy_controller())
+        print("Buffering Time: ", self.buffering_time)
+        print("Buffering Time Difference: ", self.buffering_difference)
+
         msg.add_quality_id(quality_id)
         self.send_down(msg)
 
     def handle_segment_size_response(self, msg):
-        print("> Handle Segment Size Response:", msg.__dict__)
         self.response_time = time.perf_counter() - self.request_time
 
-        print("\n\n Buffering Time: ", self.buffering_time, "\n")
-        print("\n\n Buffering Time Difference: ", self.buffering_difference, "\n")
 
 
         self.send_up(msg)
@@ -165,17 +169,15 @@ class R2AFuzzy(IR2A):
     def fuzzy_controller(self):
         """Controle Fuzzy -> Retorna a qualidade de bitrate a ser adicionado no request"""
         output = self.defuzzification()
-        if (self.current_quality_index + output) >= 19:
-            self.current_quality_index = 19
-            return self.qi[self.current_quality_index]     
-        elif (self.current_quality_index + output) <= 0:
-            self.current_quality_index = 0
-            return self.qi[self.current_quality_index]
-            
         self.current_quality_index = self.current_quality_index + output
 
-        
-        return self.qi[0]
+        if  self.current_quality_index >= 19:
+            self.current_quality_index = 19
+            return self.qi[self.current_quality_index]     
+        elif  self.current_quality_index <= 0:
+            self.current_quality_index = 0
+            return self.qi[self.current_quality_index]        
+        return self.qi[self.current_quality_index]
 
 
 
@@ -194,15 +196,27 @@ class R2AFuzzy(IR2A):
         # são adotados para o tempo de buffer para descrever a distância do tempo de buffer atual de um tempo de buffering alvo
         # 
         """
-        #
-        # target_output = self.get_buffering_time - self.target_buffering_time
-        
-        
+        # tempo do segmento para ser assistido é menor que  do tempo alvo * n2 (buffer pequeno (short))
+        if self.buffering_time < (self.target_buffering_time * self.factors_membership['N2']):
+            return 'S'
+        # tempo do segmento para ser assistido  maior que o tempo alvo * n2 e < tempo alvo * p1 buffer perto do tempo alvo
+        if (self.buffering_time > (self.target_buffering_time * self.factors_membership['N2'])) \
+         and (self.buffering_time < self.target_buffering_time * self.factors_membership['P1'] ):
+            return 'C'
+        # buffer maior que tempo alvo
         return 'L'
     def fuzzyfication_difference(self):
         """     #  Para o diferencial do buffer entrada de tempo Δti precisamos descrever o comportamento da taxa
         # entre tempos de buffer subsequentes, as seguintes linguísticas
         # são consideradas as variáveis: falling (F), steady (S) e rising (R)."""
+        
+        # Diferenca entre os ti  < funcao associada => conexao está caindo
+        if self.buffering_difference < -2:
+            return 'F'
+        # Diferenca entre os ti grande => conexao estavel
+        if self.buffering_difference > self.factors_membership['P2']:
+            return 'S'
+        # diferenca entre os t1 proximo de 0 => conexao crescendo ( n1 <= ti <= p2)
         return 'R'
     
     def fuzzy_rules(self):
@@ -243,9 +257,9 @@ class R2AFuzzy(IR2A):
         reduce (R), small reduce (SR), no change (NC), small increase
         (SI), and increase (I). """
         if self.fuzzy_rules() == "R":
-            return  -2
+            return  -3 
         if self.fuzzy_rules() == "SR":
-            return  -1
+            return  -2
         if self.fuzzy_rules() == "NC":
             return  0
         if self.fuzzy_rules() == "SI":
