@@ -62,7 +62,7 @@ class R2AFuzzy(IR2A):
         #  lista p/ armazenar o tempo de cada requisicao,  Ti = [T0, T1, T2...]
         self.time_list = list()
         # armazenar a posicao em qi da qualidade atual.
-        self.current_quality_index = 0
+        self.current_quality_index = 10
 
 
 
@@ -83,15 +83,7 @@ class R2AFuzzy(IR2A):
 
 
 
-# variables of algorithm:
-
-    @property
-    def buffer_size(self):
-        if len(self.whiteboard.get_playback_buffer_size())> 0 :
-            # playback size stored in second element of last segment requested
-            return self.whiteboard.get_playback_buffer_size()[-1][1]
-        return 0
-
+# algorithm variables:
 
 # tempo de buffer
     @property
@@ -103,7 +95,12 @@ class R2AFuzzy(IR2A):
         1) a quantidade de elementos que tem no buffer * duracao em segundos de cada segmento  - dessa forma temos o tempo em segundos que o buffer tem em cache
         2) O tempo de download do segmentyo i = uma vez que se demoramos muito para baixar cada segmento, nosso buffer diminui cada vez mais.,
         """
-        buffer_size = self.buffer_size
+        buffer_size = 0
+        
+        if len(self.whiteboard.get_playback_buffer_size())> 0 :
+            # playback size stored in second element of last segment requested
+            buffer_size = self.whiteboard.get_playback_buffer_size()[-1][1]
+        
         download_time = self.response_time
         # podemos calcular o ti do algoritmo da seguinte forma:
         # ti = (tamanho do buffer * (tempo de cada segmento em segundos)) + tempo de download do segmento i.
@@ -113,8 +110,8 @@ class R2AFuzzy(IR2A):
             t_i = (buffer_size * segment_size) + download_time
         return t_i
 
-
-
+    @property
+    
 
     def handle_xml_request(self, msg):
 
@@ -232,7 +229,6 @@ class R2AFuzzy(IR2A):
            Thus, the linguistic variables of the output are described as
         reduce (R), small reduce (SR), no change (NC), small increase
         (SI), and increase (I). """
-        return 0
         if self.fuzzy_rules() == "R":
             return  -2
         if self.fuzzy_rules() == "SR":
