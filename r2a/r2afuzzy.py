@@ -24,12 +24,9 @@ import time, json
 
 
 
-with open('dash_client.json', 'r') as f:
-  data = json.load(f)
 
-# we need these variables from dash_client.json for later.
-buffering_until = data['buffering_until']
-segment_size = data['playbak_step']
+# TODO: make it dynamic:
+segment_size = 1
 
 
 
@@ -71,7 +68,7 @@ class R2AFuzzy(IR2A):
         # d = periodo de tempo estimando a taxa de transferência (throughput) da conexão (in seconds)
         # pesos das funções de associacao de saída (defuzzificacao)
         self.factors_membership = {
-            "N2": .5,
+            "N2": .75,
             "N1": -2,
             "Z": 1,
             "P1": 1.5,
@@ -211,7 +208,7 @@ class R2AFuzzy(IR2A):
         # são consideradas as variáveis: falling (F), steady (S) e rising (R)."""
         
         # Diferenca entre os ti  < funcao associada => conexao está caindo
-        if self.buffering_difference < -2:
+        if self.buffering_difference < -.1:
             return 'F'
         # Diferenca entre os ti grande => conexao estavel
         if self.buffering_difference > self.factors_membership['P2']:
@@ -257,13 +254,13 @@ class R2AFuzzy(IR2A):
         reduce (R), small reduce (SR), no change (NC), small increase
         (SI), and increase (I). """
         if self.fuzzy_rules() == "R":
-            return  -3 
+            return  -2 
         if self.fuzzy_rules() == "SR":
-            return  -2
+            return  -1
         if self.fuzzy_rules() == "NC":
             return  0
         if self.fuzzy_rules() == "SI":
-            return  1
+            return 1
         if self.fuzzy_rules() == "I":
             return  2
 
