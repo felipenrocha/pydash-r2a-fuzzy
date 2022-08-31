@@ -26,7 +26,7 @@ import time, json
 
 
 # TODO: make it dynamic:
-segment_size = 1
+segment_size = 15
 
 
 
@@ -99,8 +99,7 @@ class R2AFuzzy(IR2A):
         download_time = self.response_time
         # podemos calcular o ti do algoritmo da seguinte forma:
         # ti = (tamanho do buffer * (tempo de cada segmento em segundos)) + tempo de download do segmento i.
-        time_to_watch_on_buffer = buffer_size * segment_size
-        t_i =  time_to_watch_on_buffer + download_time
+        t_i =  buffer_size - download_time
    
         return t_i
 
@@ -198,7 +197,7 @@ class R2AFuzzy(IR2A):
             return 'S'
         # tempo do segmento para ser assistido  maior que o tempo alvo * n2 e < tempo alvo * p1 buffer perto do tempo alvo
         if (self.buffering_time > (self.target_buffering_time * self.factors_membership['N2'])) \
-         and (self.buffering_time < self.target_buffering_time * self.factors_membership['P1'] ):
+         and (self.buffering_time < self.target_buffering_time):
             return 'C'
         # buffer maior que tempo alvo
         return 'L'
