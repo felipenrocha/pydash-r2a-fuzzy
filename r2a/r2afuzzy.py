@@ -5,12 +5,6 @@
 @description: PyDash Project
 
 
-
-the quality list is obtained with the parameter of handle_xml_response() method and the choice
-is made inside of handle_segment_size_request(), before sending the message down.
-
-
-
 Based on algorithm described in: FDASH: A Fuzzy-Based MPEG/DASH Adaptation Algorithm.  Dimitrios J. Vergados, Angelos Michalas, 
 Aggeliki Sgora, Dimitrios D. Vergado, and Periklis Chatzimisios
 
@@ -22,11 +16,13 @@ from player.parser import *
 from r2a.ir2a import IR2A
 import time, json
 
+from math import floor
+
 
 
 
 # TODO: make it dynamic:
-segment_size = 15
+segment_size = 1
 
 
 
@@ -60,15 +56,16 @@ class R2AFuzzy(IR2A):
         #  lista p/ armazenar o tempo de cada requisicao,  Ti = [T0, T1, T2...]
         self.buffering_time_list = list()
         # armazenar a posicao em qi da qualidade atual.
-        self.current_quality_index = 10
+        self.current_quality_index = 0
 
         # algorithm constants
         #  self.target_buffering_time = tempo de buffer alvo (in seconds)
-        self.target_buffering_time = 40
+        self.target_buffering_time = 20
         # d = periodo de tempo estimando a taxa de transferência (throughput) da conexão (in seconds)
         # pesos das funções de associacao de saída (defuzzificacao)
         self.factors_membership = {
-            "N2": .75,
+            "low": .5,
+            "high":1,
             "N1": -2,
             "Z": 1,
             "P1": 1.5,
@@ -88,28 +85,25 @@ class R2AFuzzy(IR2A):
         Veja que ti pode ser expressada como o tempo que o segmento i espera até começar a rodar.
         Quando um segmento i é baixado, ele irá esperar:  
         1) a quantidade de elementos que tem no buffer * duracao em segundos de cada segmento  - dessa forma temos o tempo em segundos que o buffer tem em cache
-        2) O tempo de download do segmentyo i = uma vez que se demoramos muito para baixar cada segmento, nosso buffer diminui cada vez mais.,
+        2) O tempo de download do segmento i = uma vez que se demoramos muito para baixar cada segmento, nosso buffer diminui cada vez mais.,
         """
         buffer_size = 0
-        
         if len(self.whiteboard.get_playback_buffer_size())> 0 :
-            # playback size stored in second element of last segment requested
+            # getting buffer size from whiteboard data:
             buffer_size = self.whiteboard.get_playback_buffer_size()[-1][1]
-        
+        # donwload time is defined when we get response
         download_time = self.response_time
         # podemos calcular o ti do algoritmo da seguinte forma:
-        # ti = (tamanho do buffer * (tempo de cada segmento em segundos)) + tempo de download do segmento i.
+        # ti = (tamanho do buffer - tempo de download do segmento) * tamanho do segmento i.
         t_i =  buffer_size - download_time
-   
         return t_i
 
     @property
     def buffering_difference(self):
         if len(self.buffering_time_list) > 1:
             # Δti = ti − ti−1
-            # gambiarra
-            # TODO: fix 
-            return   self.buffering_time_list[-1] - self.buffering_time_list[-2]
+
+            return  self.buffering_time_list[-1] - self.buffering_time_list[-2]
 
         elif len(self.buffering_time_list) == 1:
             # t = 1 -> Δt1 = t1 - 0
@@ -124,7 +118,7 @@ class R2AFuzzy(IR2A):
         # getting qi list
 
         self.parsed_mpd = parse_mpd(msg.get_payload())
-
+        
         
 
         self.qi = self.parsed_mpd.get_qi()
@@ -138,9 +132,9 @@ class R2AFuzzy(IR2A):
         self.buffering_time_list.append(self.buffering_time)
 
         # time to define the segment quality choose to make the request
-        self.request_time = time.perf_counter()
         
         quality_id = self.fuzzy_controller()
+        self.request_time = time.perf_counter()
         
         print("Buffering_time_list : ", self.buffering_time_list)                
         print("FUZZYFICATION buffering: ", self.fuzzyfication_buffering())
@@ -193,11 +187,11 @@ class R2AFuzzy(IR2A):
         # 
         """
         # tempo do segmento para ser assistido é menor que  do tempo alvo * n2 (buffer pequeno (short))
-        if self.buffering_time < (self.target_buffering_time * self.factors_membership['N2']):
+        if self.buffering_time < (self.target_buffering_time * self.factors_membership['low']):
             return 'S'
-        # tempo do segmento para ser assistido  maior que o tempo alvo * n2 e < tempo alvo * p1 buffer perto do tempo alvo
-        if (self.buffering_time > (self.target_buffering_time * self.factors_membership['N2'])) \
-         and (self.buffering_time < self.target_buffering_time):
+        # tempo do segmento para ser assistido  maior que o tempo alvo * n2 e < tempo de dbuffer perto do tempo alvo
+        if (self.buffering_time > (self.target_buffering_time * self.factors_membership['low'])) \
+         and (self.buffering_time < self.target_buffering_time*self.factors_membership['high']):
             return 'C'
         # buffer maior que tempo alvo
         return 'L'
@@ -207,10 +201,10 @@ class R2AFuzzy(IR2A):
         # são consideradas as variáveis: falling (F), steady (S) e rising (R)."""
         
         # Diferenca entre os ti  < funcao associada => conexao está caindo
-        if self.buffering_difference < -.1:
+        if self.buffering_difference < -1:
             return 'F'
         # Diferenca entre os ti grande => conexao estavel
-        if self.buffering_difference > self.factors_membership['P2']:
+        if self.buffering_difference > 1:
             return 'S'
         # diferenca entre os t1 proximo de 0 => conexao crescendo ( n1 <= ti <= p2)
         return 'R'
@@ -254,7 +248,7 @@ class R2AFuzzy(IR2A):
         (SI), and increase (I). """
         if self.fuzzy_rules() == "R":
             return  -2 
-        if self.fuzzy_rules() == "SR":
+        if self.fuzzy_rules() == "SR":   
             return  -1
         if self.fuzzy_rules() == "NC":
             return  0

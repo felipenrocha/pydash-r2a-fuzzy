@@ -23,6 +23,13 @@ from base.timer import Timer
 from player.out_vector import OutVector
 from player.parser import *
 from base.whiteboard import Whiteboard
+import json
+# traffic_shaping_profile_sequence
+tsps = ""
+with open('dash_client.json') as json_file:
+    data = json.load(json_file)
+    tsps = tsps + data['traffic_shaping_profile_sequence']
+
 
 '''
 quality_id - Taxa em que o video foi codificado (46980bps, ..., 4726737bps) 
@@ -371,7 +378,7 @@ class Player(SimpleModule):
         plt.title(title)
         plt.ylim(min(y), max(y) * 4 / 3)
 
-        plt.savefig(f'./results/{file_name}.png')
+        plt.savefig(f'./results/{file_name}-{tsps}.png')
         plt.clf()
         plt.cla()
         plt.close()
