@@ -28,7 +28,6 @@ segment_size = 1
 
 
 
-
 class R2AFuzzy(IR2A):
 
     def __init__(self, id):
@@ -60,11 +59,11 @@ class R2AFuzzy(IR2A):
 
         # algorithm constants
         #  self.target_buffering_time = tempo de buffer alvo (in seconds)
-        self.target_buffering_time = 20
+        self.target_buffering_time = 30
         # d = periodo de tempo estimando a taxa de transferência (throughput) da conexão (in seconds)
         # pesos das funções de associacao de saída (defuzzificacao)
         self.factors_membership = {
-            "low": .5,
+            "low": .75,
             "high":1,
             "N1": -2,
             "Z": 1,
